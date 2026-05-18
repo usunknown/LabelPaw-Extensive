@@ -1379,6 +1379,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if not parts: continue
                 class_id = int(parts[0])
                 label = self.class_list[class_id] if class_id < len(self.class_list) else str(class_id)
+                shape = None
 
                 # 1. YOLO BBox 格式 (常规矩形：5个参数)
                 if len(parts) == 5:
@@ -1440,14 +1441,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         self._add_shape_to_scene(shape, label)
                         continue
 
-                # 如果不是 Pose，且满足多边形条件
-                if len(parts) > 5 and len(parts) % 2 == 1:
-                    qpoints = [QPointF(float(parts[i]) * img_w, float(parts[i + 1]) * img_h) for i in
-                               range(1, len(parts), 2)]
-                    shape = PolyShape(QPolygonF(qpoints), label)
+                    # 如果不是 Pose，且满足多边形条件
+                    elif len(parts) % 2 == 1:
+                        qpoints = [QPointF(float(parts[i]) * img_w, float(parts[i + 1]) * img_h) for i in
+                                   range(1, len(parts), 2)]
+                        shape = PolyShape(QPolygonF(qpoints), label)
+
+                if shape is not None:
                     self._add_shape_to_scene(shape, label)
-                else:
-                    continue
         except Exception as e:
             print(f"加载 YOLO 标注失败: {e}")
 
