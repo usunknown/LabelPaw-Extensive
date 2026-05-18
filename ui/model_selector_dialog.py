@@ -198,7 +198,12 @@ class ModelSelectorDialog(QDialog):
     def _init_data(self):
         # 设置一个更加通用的模型权重基准目录
         # 优先从当前项目根目录下的 weights 文件夹寻找，如果没有则回退到硬编码路径
-        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        import sys
+        if getattr(sys, 'frozen', False):
+            PROJECT_ROOT = os.path.dirname(sys.executable)
+        else:
+            PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
         LOCAL_WEIGHTS_DIR = os.path.join(PROJECT_ROOT, "weights")
         HARDCODED_DEV_DIR = r"E:\11-AI\标注工具\weights"
 
@@ -223,7 +228,8 @@ class ModelSelectorDialog(QDialog):
                         "display_name": info.get("display_name", key),
                         "size_label": info.get("size_label", ""),
                         "type": info.get("type", "sam2"),
-                        "weight": info.get("weight", "")
+                        "weight": info.get("weight", ""),
+                        "supports_text": info.get("supports_text", False)
                     })
                 if sam_list:
                     self.all_data["SAM"] = sam_list

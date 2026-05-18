@@ -25,9 +25,15 @@ torch.backends.cudnn.allow_tf32 = True
 
 
 # ============== SAM Model Map ==============
+import sys
+
 # 设置一个更加通用的模型权重基准目录
 # 优先从当前项目根目录下的 weights 文件夹寻找，如果没有则回退到硬编码路径
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if getattr(sys, 'frozen', False):
+    PROJECT_ROOT = os.path.dirname(sys.executable)
+else:
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 LOCAL_WEIGHTS_DIR = os.path.join(PROJECT_ROOT, "weights")
 HARDCODED_DEV_DIR = r"E:\11-AI\标注工具\weights"
 
@@ -366,7 +372,7 @@ class SAMClient(QObject):
 
         # 如果权重文件不存在，提示用户并不继续加载
         if not weight_path or not os.path.exists(weight_path):
-            self.model_status_changed.emit(False, f"模型权重文件不存在或未下载: {weight_path or '未指定'}")
+            self.model_status_changed.emit(False, f"模型权重文件不存在或未下载")
             return
 
         # 先停止旧的推理 worker

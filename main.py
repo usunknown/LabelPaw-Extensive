@@ -114,12 +114,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.btnModelSelector.setText(f" {display_name} ▾")
         self.btnModelSelector.setIcon(QIcon("ui/icon/s.svg"))
         
-        if model_info.get("type", "").startswith("sam"):
+        if key in SAM_MODEL_MAP or model_info.get("type", "").startswith("sam"):
             self.btnPredict.hide()
             self.current_yolo_predictor = None
             if key not in SAM_MODEL_MAP:
                 SAM_MODEL_MAP[key] = model_info
             self.sam_client.load_model_by_key(key)
+            # 如果当前在点标注模式（不支持SAM），自动切换回矩形标注
+            if self.scene.mode == CanvasMode.POINT:
+                self.actionRect.trigger()
         elif model_info.get("type", "").startswith("yolo"):
             self.sam_client.cleanup()
             self.sam_client.current_model_key = key
@@ -140,26 +143,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     elif task == 'obb':
                         self.actionRBox.trigger()
                         
-                    self.statusBar.showMessage(f"已加载 YOLO 模型: {display_name}。")
-                    self.update_model_status(True, f"{display_name} 已就绪")
+                    self.update_model_status(True, f"已加载 YOLO 模型: {display_name}")
                     self.btnPredict.show()
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
-                    self.statusBar.showMessage(f"加载 YOLO 模型失败: {str(e)}")
-                    self.update_model_status(False, "加载失败")
+                    self.update_model_status(False, f"加载 YOLO 模型失败: {str(e)}")
                     self.btnPredict.hide()
             else:
-                self.statusBar.showMessage(f"未找到对应的 YOLO 模型文件")
-                self.update_model_status(False, f"无权重文件")
+                self.update_model_status(False, f"未找到对应的 YOLO 模型文件")
                 self.btnPredict.hide()
         else:
             self.btnPredict.hide()
             self.current_yolo_predictor = None
             self.sam_client.cleanup()
             self.sam_client.current_model_key = key
-            self.statusBar.showMessage(f"已选择模型: {display_name}。非 SAM 模型暂不支持智能推理。")
-            self.update_model_status(True, f"{display_name} 已就绪 (纯本地/云端)")
+            self.update_model_status(True, f"已选择模型: {display_name}。非 SAM 模型暂不支持智能推理。")
         
         supports_text = model_info.get("supports_text", False)
         
@@ -251,7 +250,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.yolo_worker and self.yolo_worker.isRunning():
             return
             
-        self.statusBar.showMessage("正在使用 YOLO 进行预测...")
+        self.statusBar.showMessage("正在使用 YOLO 进行预测...", 3000)
+        self.helpLabel.setText("正在使用 YOLO 进行预测...")
+        self.helpLabel.setStyleSheet("color: orange;")
         self.original_predict_text = self.btnPredict.text()
         self.btnPredict.setText("预测中")
         
@@ -271,7 +272,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         if not shapes:
             DialogOver(self, "未找到任何预测结果", "提示", "info")
-            self.statusBar.showMessage("预测完成，未找到任何结果")
+            self.statusBar.showMessage("预测完成，未找到任何结果", 3000)
+            self._update_help_text(self.scene.mode)
             return
             
         # Get existing shapes for deduplication
@@ -396,7 +398,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     
         if added_count == 0:
             DialogOver(self, "暂无新的预测内容需要添加", "提示", "info")
-            self.statusBar.showMessage("预测完成，暂无新内容")
+            self.statusBar.showMessage("预测完成，暂无新内容", 3000)
+            self._update_help_text(self.scene.mode)
             return
         
         self.save_classes()
@@ -407,7 +410,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         msg_parts = [f"{cls} ({count})" for cls, count in class_counts.items()]
         msg = "添加了" + str(added_count) + "个目标：" + ", ".join(msg_parts)
         DialogOver(self, msg + "，并进行标注", "预测成功", "success")
-        self.statusBar.showMessage(msg)
+        self.statusBar.showMessage(msg, 5000)
+        self._update_help_text(self.scene.mode)
 
     def on_predict_error(self, err_msg):
         self.predict_movie.stop()
@@ -415,7 +419,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.btnPredict.setIcon(QIcon("ui/icon/lightning-fill.svg"))
         self.btnPredict.setEnabled(True)
         DialogOver(self, f"预测失败: {err_msg}", "错误", "danger")
-        self.statusBar.showMessage("预测出错")
+        self.statusBar.showMessage("预测出错", 3000)
+        self._update_help_text(self.scene.mode)
 
     def add_class_to_list(self, cls_name):
         """列表项支持双击编辑"""
@@ -815,7 +820,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             if not is_yolo_pose:
                 # 尝试寻找并加载默认的 YOLO pose 模型
-                PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+                import sys
+                if getattr(sys, 'frozen', False):
+                    PROJECT_ROOT = os.path.dirname(sys.executable)
+                else:
+                    PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
                 LOCAL_WEIGHTS_DIR = os.path.join(PROJECT_ROOT, "weights")
                 HARDCODED_DEV_DIR = r"E:\11-AI\标注工具\weights"
                 
@@ -844,7 +853,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                             break
                             
                 if default_pose_path and os.path.exists(default_pose_path):
-                    self.statusBar.showMessage(f"正在为您自动切换至 {default_name} 模型...")
+                    self.statusBar.showMessage(f"正在为您自动切换至 {default_name} 模型...", 3000)
                     self.on_model_selected({
                         "key": default_name,
                         "display_name": default_name,
@@ -853,7 +862,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     })
                 else:
                     # 不再强行拦截，而是提醒用户切换模型，这样模型选择器才能显示出来
-                    self.statusBar.showMessage("当前为点标注模式，请在上方选择 YOLO 姿态模型以使用智能辅助")
+                    self.statusBar.showMessage("当前为点标注模式，请在上方选择 YOLO 姿态模型以使用智能辅助", 4000)
                     self.helpLabel.setText("请选择 YOLO 姿态模型")
                     self.helpLabel.setStyleSheet("color: orange;")
 
@@ -1196,7 +1205,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.listFiles.currentItemChanged.connect(self.on_file_selected)
 
         if current_deleted:
-            self.statusBar.showMessage(f"已删除 {deleted_count} 个文件，当前预览已清除")
+            self.statusBar.showMessage(f"已删除 {deleted_count} 个文件，当前预览已清除", 3000)
             # 如果列表还有文件，自动选中并加载第一项或当前项
             if self.listFiles.count() > 0:
                 current_row = self.listFiles.currentRow()
@@ -1207,7 +1216,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 # 手动触发一次加载
                 self.on_file_selected(item, None)
         else:
-            self.statusBar.showMessage(f"成功删除 {deleted_count} 个文件")
+            self.statusBar.showMessage(f"成功删除 {deleted_count} 个文件", 3000)
 
     def on_file_selected(self, current, previous):
         if previous:
