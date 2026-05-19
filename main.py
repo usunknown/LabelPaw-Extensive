@@ -996,8 +996,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.current_dir:
             class_file = os.path.join(self.current_dir, "classes.txt")
             with open(class_file, "w", encoding="utf-8") as f:
-                for cls_name in self.class_list:
-                    f.write(cls_name + "\n")
+                f.write("\n".join(self.class_list))
 
     def handle_new_shape(self, shape):
         self.scene.addItem(shape)
@@ -1010,8 +1009,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ok = True
         else:
             last_class = self.class_list[-1] if self.class_list else ""
-            default_idx = self.class_list.index(last_class) if last_class in self.class_list else 0
-            cls_name, ok = QInputDialog.getItem(self, "输入类别", "请选择或输入类别名称:", self.class_list, default_idx, True)
+            from ui.label_dialog import LabelDialog
+            dlg = LabelDialog("输入类别", "请选择或输入类别名称:", self.class_list, last_class, self.is_dark_theme, self)
+            ok = dlg.exec()
+            cls_name = dlg.get_text()
 
         if ok and cls_name:
             cls_name = cls_name.strip()
@@ -1038,10 +1039,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def edit_shape_label(self, shape):
         """二次修改已有标注框的类别"""
         current_label = shape.label
-        default_idx = self.class_list.index(current_label) if current_label in self.class_list else 0
-
-        cls_name, ok = QInputDialog.getItem(self, "修改类别", "请重新选择或输入类别名称:", self.class_list, default_idx,
-                                            True)
+        from ui.label_dialog import LabelDialog
+        dlg = LabelDialog("修改类别", "请重新选择或输入类别名称:", self.class_list, current_label, self.is_dark_theme, self)
+        ok = dlg.exec()
+        cls_name = dlg.get_text()
 
         if ok and cls_name:
             cls_name = cls_name.strip()

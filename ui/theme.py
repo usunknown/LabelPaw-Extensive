@@ -55,15 +55,27 @@ QListWidget {
     outline: 0;
 }
 QListWidget::item {
-    padding: 6px 8px;
+    padding: 4px 8px;
     border-radius: 4px;
     color: #cbd5e1;
+    font-size: 13px;
+    min-height: 24px;
 }
 QListWidget::item:hover { background-color: #1E293B; }
 QListWidget::item:selected {
     background-color: #1E293B;
     color: #22C55E;
     border-left: 4px solid #22C55E;
+}
+QListWidget QLineEdit {
+    background-color: #1E293B;
+    color: #F8FAFC;
+    border: 1px solid #22C55E;
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin: 0px;
+    font-size: 13px;
+    min-height: 20px;
 }
 
 QGraphicsView {
@@ -375,15 +387,27 @@ QListWidget {
     outline: 0;
 }
 QListWidget::item {
-    padding: 6px 8px;
+    padding: 4px 8px;
     border-radius: 4px;
     color: #334155;
+    font-size: 13px;
+    min-height: 24px;
 }
 QListWidget::item:hover { background-color: #F1F5F9; }
 QListWidget::item:selected {
     background-color: #F1F5F9;
     color: #22C55E;
     border-left: 4px solid #22C55E;
+}
+QListWidget QLineEdit {
+    background-color: #FFFFFF;
+    color: #0F172A;
+    border: 1px solid #22C55E;
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin: 0px;
+    font-size: 13px;
+    min-height: 20px;
 }
 
 QGraphicsView {
