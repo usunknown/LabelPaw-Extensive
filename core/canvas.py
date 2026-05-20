@@ -61,8 +61,9 @@ class Canvas(QGraphicsScene):
         self.img_item = QGraphicsPixmapItem(pixmap)
         self.addItem(self.img_item)
         self.setSceneRect(pixmap.rect())
-        self.h_line.show()
-        self.v_line.show()
+        # 十字线默认隐藏，由 CanvasView.enterEvent 在鼠标进入画布时显示
+        self.h_line.hide()
+        self.v_line.hide()
 
     def clear_shapes(self):
         # Clear all shape items from the canvas
