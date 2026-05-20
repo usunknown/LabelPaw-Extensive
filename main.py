@@ -447,6 +447,51 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                             shape.update_label_text(new_name)
                         changed = True
             self.save_classes()
+            
+            # 批量更新目录下的其他标注文件 (json, xml)
+            if hasattr(self, 'current_dir') and self.current_dir:
+                try:
+                    import glob
+                    import xml.etree.ElementTree as ET
+                    import os, json
+                    
+                    # 更新 JSON
+                    for json_file in glob.glob(os.path.join(self.current_dir, "*.json")):
+                        if os.path.basename(json_file) == "class_colors.json":
+                            continue
+                        modified_file = False
+                        try:
+                            with open(json_file, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                            if 'shapes' in data:
+                                for s in data['shapes']:
+                                    if s.get('label') == old_name:
+                                        s['label'] = new_name
+                                        modified_file = True
+                            if modified_file:
+                                with open(json_file, 'w', encoding='utf-8') as f:
+                                    json.dump(data, f, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+                            
+                    # 更新 XML
+                    for xml_file in glob.glob(os.path.join(self.current_dir, "*.xml")):
+                        modified_file = False
+                        try:
+                            tree = ET.parse(xml_file)
+                            root = tree.getroot()
+                            for obj in root.findall('object'):
+                                name_node = obj.find('name')
+                                if name_node is not None and name_node.text == old_name:
+                                    name_node.text = new_name
+                                    modified_file = True
+                            if modified_file:
+                                tree.write(xml_file, encoding='utf-8', xml_declaration=True)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print(f"批量更新文件失败: {e}")
+            
             if changed:
                 self.auto_save_annotation()
                 self.push_state()
@@ -489,30 +534,59 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_undo_redo_buttons()
 
     def undo(self):
-        """撤销 (Ctrl+Z)"""
+        """撤销：多边形绘制中撤销顶点，其他情况撤销整步操作"""
+        from core.canvas import CanvasMode
+        # 多边形绘制中：撤销最后一个顶点
+        if self.scene.mode == CanvasMode.POLY and len(self.scene.poly_pts) > 0:
+            removed_pt = self.scene.poly_pts.pop()
+            if not hasattr(self, '_poly_redo_pts'):
+                self._poly_redo_pts = []
+            self._poly_redo_pts.append(removed_pt)
+            self.scene.update_temp_poly()
+            self.update_undo_redo_buttons()
+            return
+
+        # 常规撤销：恢复上一步画布状态
         if len(self.undo_stack) > 1:
-            # 把现在的状态拿出来，放到重做栈里去
             current_state = self.undo_stack.pop()
             self.redo_stack.append(current_state)
-            # 获取上一步的状态并还原
             previous_state = self.undo_stack[-1]
             self.restore_state(previous_state)
             self.update_undo_redo_buttons()
 
     def redo(self):
-        """重做/前进 (Ctrl+Y 或 Ctrl+Shift+Z)"""
+        """重做：多边形绘制中恢复顶点，其他情况前进一步"""
+        from core.canvas import CanvasMode
+        # 多边形绘制中：恢复被撤销的顶点
+        if self.scene.mode == CanvasMode.POLY and hasattr(self, '_poly_redo_pts') and self._poly_redo_pts:
+            pt = self._poly_redo_pts.pop()
+            self.scene.poly_pts.append(pt)
+            self.scene.update_temp_poly()
+            self.update_undo_redo_buttons()
+            return
+
+        # 常规重做
         if self.redo_stack:
-            # 从重做栈里拿出来，塞回撤销栈
             next_state = self.redo_stack.pop()
             self.undo_stack.append(next_state)
-            # 还原该状态
             self.restore_state(next_state)
             self.update_undo_redo_buttons()
             
     def update_undo_redo_buttons(self):
-        """更新撤销和重做按钮的可用状态"""
-        self.btnUndo.setEnabled(len(self.undo_stack) > 1)
-        self.btnRedo.setEnabled(len(self.redo_stack) > 0)
+        """更新撤销和重做按钮的可用状态（含多边形顶点撤销）"""
+        from core.canvas import CanvasMode
+        # 撤销可用：有历史状态 或 多边形绘制中有顶点可撤销
+        can_undo = len(self.undo_stack) > 1
+        if self.scene.mode == CanvasMode.POLY and len(self.scene.poly_pts) > 0:
+            can_undo = True
+
+        # 重做可用：有重做状态 或 多边形绘制中有被撤销的顶点
+        can_redo = len(self.redo_stack) > 0
+        if self.scene.mode == CanvasMode.POLY and hasattr(self, '_poly_redo_pts') and self._poly_redo_pts:
+            can_redo = True
+
+        self.btnUndo.setEnabled(can_undo)
+        self.btnRedo.setEnabled(can_redo)
         
         # 强制刷新图标渲染
         from PySide6.QtGui import QIcon
@@ -658,6 +732,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.scene.mode == CanvasMode.RECT:
                 x, y, w, h = res["rect"]
                 shape = RectShape(QRectF(x, y, w, h), prompt_text)
+            elif self.scene.mode == CanvasMode.RBOX:
+                if "obb" in res and len(res["obb"]) == 5:
+                    cx, cy, w, h, angle = res["obb"]
+                    shape = RotatedRectShape(cx, cy, w, h, angle, prompt_text)
+                else:
+                    x, y, w, h = res["rect"]
+                    cx = x + w / 2.0
+                    cy = y + h / 2.0
+                    shape = RotatedRectShape(cx, cy, w, h, 0, prompt_text)
             else:
                 qpts = [QPointF(p[0], p[1]) for p in res["poly_pts"]]
                 shape = PolyShape(QPolygonF(qpts), prompt_text)
@@ -949,6 +1032,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def _set_mode(self, mode):
         self.scene.set_mode(mode)
+        # 切换模式时清空多边形顶点重做栈
+        self._poly_redo_pts = []
         mode_name = CanvasMode.get_mode_name(mode)
         self.modeLabel.setText(f"模式: {mode_name}标注")
         self._update_help_text(mode)
@@ -1515,17 +1600,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         key = event.key()
         modifiers = event.modifiers()
 
-        # 撤销与重做快捷键拦截
-        if key == Qt.Key_Z and modifiers == Qt.ControlModifier:
-            # Shift + Ctrl + Z 或者是多边形画点撤回处理
-            if modifiers & Qt.ShiftModifier:
-                self.redo()
-            elif self.scene.mode == CanvasMode.POLY and len(self.scene.poly_pts) > 0:
-                pass  # 多边形绘制中的撤销点由 canvas 自己处理，主窗口跳过
-            else:
-                self.undo()
-        elif key == Qt.Key_Y and modifiers == Qt.ControlModifier:
+        # 撤销与重做快捷键（统一 Ctrl+Shift+Z 为重做）
+        if key == Qt.Key_Z and modifiers == (Qt.ControlModifier | Qt.ShiftModifier):
             self.redo()
+        elif key == Qt.Key_Z and modifiers == Qt.ControlModifier:
+            self.undo()
 
         if key == Qt.Key_D or key == Qt.Key_Right:
             current_idx = self.listFiles.currentRow()

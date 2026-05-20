@@ -98,6 +98,13 @@ class BaseShape:
         bound_rect = item.boundingRect()
         x = bound_rect.center().x()
         y = bound_rect.top() - 20
+        
+        # 将局部坐标的顶部转换为场景坐标，检查是否超出图片上边缘 (假设图片顶部为 0)
+        scene_top_y = item.mapToScene(QPointF(x, y)).y()
+        if scene_top_y < 0:
+            # 如果超出顶部，将标签显示在框内部中心点位置
+            y = bound_rect.center().y() - self.label_text.boundingRect().height() / 2
+
         self.label_text.setPos(x - self.label_text.boundingRect().width() / 2, y)
 
     def update_label_text(self, text):

@@ -505,7 +505,7 @@ class Ui_MainWindow(object):
         
         self.btnRedo = QToolButton()
         self.btnRedo.setIcon(self.set_icon_color(QIcon("ui/icon/arrow-u-up-right.svg"), self.current_icon_color))
-        self.btnRedo.setToolTip("重做 (Ctrl+Y)")
+        self.btnRedo.setToolTip("重做 (Ctrl+Shift+Z)")
         self.btnRedo.setFixedSize(36, 36)
         
         self.btnDelete = QToolButton()

@@ -440,10 +440,8 @@ class Canvas(QGraphicsScene):
                 self.removeItem(item)
             self.state_changed.emit()
         elif key == Qt.Key_Z and modifiers == Qt.ControlModifier:
-            is_sam_model = getattr(self.sam_client, 'current_model_key', '').startswith('sam')
-            if self.mode == CanvasMode.POLY and not (self.sam_enabled and is_sam_model) and len(self.poly_pts) > 0:
-                self.poly_pts.pop()
-                self.update_temp_poly()
+            # 多边形顶点撤销已由 MainWindow.undo() 统一处理
+            pass
         elif key == Qt.Key_Return or key == Qt.Key_Enter:
             if self.mode == CanvasMode.POLY and len(self.poly_pts) > 2:
                 self.finish_poly_shape()
