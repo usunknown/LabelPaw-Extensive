@@ -3,6 +3,7 @@ sam3/
 ultralytics/
 关键点测试/
 整合包/
+界面图片/
 # 忽略 IDE 配置文件
 .idea/
 .vscode/

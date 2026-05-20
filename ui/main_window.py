@@ -338,6 +338,13 @@ class CanvasView(QGraphicsView):
             scene.v_line.show()
         super().enterEvent(event)
 
+    def resizeEvent(self, event):
+        """窗口大小变化时自适应图片（仅改变视图变换，不影响标注坐标）"""
+        super().resizeEvent(event)
+        scene = self.scene()
+        if scene and scene.sceneRect().width() > 0:
+            self.fitInView(scene.sceneRect(), Qt.KeepAspectRatio)
+
 
 class Ui_MainWindow(object):
     def set_icon_color(self, icon, color):
