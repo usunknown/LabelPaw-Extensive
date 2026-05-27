@@ -1168,14 +1168,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 shape.update_label_text(cls_name)
             if hasattr(shape, 'update_label_position'):
                 shape.update_label_position(shape)
+            
+            from core.shapes import RectShape, PolyShape, RotatedRectShape
+            is_rect_poly_obb = isinstance(shape, (RectShape, PolyShape, RotatedRectShape))
+            
             if hasattr(shape, 'update_label_visibility'):
-                shape.update_label_visibility(shape, is_selected=True, is_hovered=False)
+                shape.update_label_visibility(shape, is_selected=(not is_rect_poly_obb), is_hovered=False)
             # 应用类别颜色
             if hasattr(shape, 'set_color'):
                 shape.set_color(self.classListWidget.get_class_color(cls_name))
+                
             for item in self.scene.selectedItems():
                 item.setSelected(False)
-            shape.setSelected(True)
+                
+            if is_rect_poly_obb:
+                shape.setSelected(False)
+            else:
+                shape.setSelected(True)
+                
             self.push_state()
             self.update_annotation_tree()
         else:
