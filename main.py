@@ -5,6 +5,10 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QInputDial
 from PySide6.QtCore import Qt, QPointF, QRectF, QThread, Signal, QSize
 from PySide6.QtGui import QPainter, QIcon, QPixmap, QColor, QAction, QActionGroup, QPolygonF, QMovie
 from main_dataset_tool import DatasetToolWindow
+import cv2
+import numpy as np
+from PIL import Image
+import torch
 try:
     from ui.author_info import AuthorInfoDialog
 except ImportError:
@@ -39,12 +43,6 @@ class SamBatchWorker(QThread):
         self.is_cancelled = False
 
     def run(self):
-        import cv2
-        import numpy as np
-        import torch
-        from PIL import Image
-        from labelpaw.data.exporter import Exporter
-
         total = len(self.img_paths)
         processed = 0
 
@@ -173,12 +171,180 @@ class SamBatchWorker(QThread):
             import traceback
             traceback.print_exc()
             self.error.emit(str(e))
+class YoloBatchPredictorWorker(QThread):
+    progress = Signal(int, int, str)  # current, total, filename
+    finished = Signal(int, int, list)  # processed, total, detected_classes
+    error = Signal(str)
+
+    def __init__(self, predictor, img_paths, current_format, class_list, template_manager=None):
+        super().__init__()
+        self.predictor = predictor
+        self.img_paths = img_paths
+        self.current_format = current_format
+        self.class_list = list(class_list)
+        self.template_manager = template_manager
+        self.is_cancelled = False
+
+    def run(self):
+        import cv2
+        import numpy as np
+        from PIL import Image
+        from labelpaw.data.exporter import Exporter
+        from PySide6.QtCore import QRectF, QPointF
+        from PySide6.QtGui import QPolygonF
+
+        total = len(self.img_paths)
+        processed = 0
+        detected_classes = set()
+
+        try:
+            for idx, img_path in enumerate(self.img_paths):
+                if self.is_cancelled:
+                    break
+
+                filename = os.path.basename(img_path)
+                self.progress.emit(idx, total, filename)
+
+                # 1. 获取图像尺寸
+                try:
+                    with Image.open(img_path) as pil_img:
+                        w_img, h_img = pil_img.size
+                except Exception as e:
+                    print(f"无法读取图片尺寸 {img_path}: {e}")
+                    processed += 1
+                    continue
+
+                # 2. 运行 YOLO 同步预测
+                shapes = self.predictor.predict_sync(img_path)
+                
+                # 3. 解析预测结果为 Exporter 结构
+                export_shapes = []
+                for s in shapes:
+                    shape_type = s["type"]
+                    label = s["label"]
+                    data = s["data"]
+                    detected_classes.add(label)
+
+                    if shape_type == "rect":
+                        x1, y1 = data.x(), data.y()
+                        w, h = data.width(), data.height()
+                        export_shapes.append({
+                            "label": label,
+                            "type": "rectangle",
+                            "points": [[x1, y1], [x1 + w, y1 + h]]
+                        })
+                    elif shape_type == "poly":
+                        points = [[data[i].x(), data[i].y()] for i in range(data.count())]
+                        export_shapes.append({
+                            "label": label,
+                            "type": "polygon",
+                            "points": points
+                        })
+                    elif shape_type == "rbox":
+                        points = [[data[i].x(), data[i].y()] for i in range(data.count())]
+                        pts = np.array(points, dtype=np.float32)
+                        rect_obb = cv2.minAreaRect(pts)
+                        cx, cy = float(rect_obb[0][0]), float(rect_obb[0][1])
+                        w, h = float(rect_obb[1][0]), float(rect_obb[1][1])
+                        angle = float(rect_obb[2])
+
+                        export_shapes.append({
+                            "label": label,
+                            "type": "obb",
+                            "points": points,
+                            "rect": [cx, cy, w, h],
+                            "angle": angle
+                        })
+                    elif shape_type == "pose":
+                        rect = data["rect"]
+                        cx, cy = rect.x() + rect.width()/2, rect.y() + rect.height()/2
+                        w, h = rect.width(), rect.height()
+
+                        kps = data["keypoints"]
+                        keypoints = []
+                        for kp in kps:
+                            pos = kp["pos"]
+                            keypoints.append([pos.x(), pos.y(), kp["vis"]])
+
+                        # 构造和保存模板，以便加载时能够显示连线！
+                        template_name = None
+                        if "skeleton" in s and self.template_manager:
+                            template_name = f"YOLO_Auto_{len(keypoints)}"
+                            yolo_skeleton = s["skeleton"]
+                            kpt_names = s.get("kpt_names", [])
+                            
+                            template = {
+                                "name": template_name,
+                                "label": label,
+                                "keypoints": [],
+                                "connections": []
+                            }
+                            
+                            # 填充点名称
+                            for i in range(len(keypoints)):
+                                name = kpt_names[i] if i < len(kpt_names) else f"kp_{i}"
+                                template["keypoints"].append({"name": name, "color": "#00FF00", "default_pos": [0.5, 0.5]})
+                                
+                            # 填充连接线 (1-based to 0-based)
+                            for edge in yolo_skeleton:
+                                if len(edge) == 2:
+                                    p1, p2 = edge[0], edge[1]
+                                    if p1 > 0 and p2 > 0:
+                                        template["connections"].append([p1 - 1, p2 - 1])
+                                    else:
+                                        template["connections"].append([p1, p2])
+                                        
+                            self.template_manager.add_template(template)
+
+                        # 兜底：如果模型没有包含自定义 skeleton，尝试从本地模板库匹配同点数的已有模板（例如 Person (COCO)）
+                        if not template_name and self.template_manager:
+                            for t in self.template_manager.templates:
+                                if len(t.get("keypoints", [])) == len(keypoints):
+                                    template_name = t["name"]
+                                    break
+
+                        if not template_name:
+                            template_name = f"YOLO_Pose_{len(keypoints)}"
+
+                        export_shape_dict = {
+                            "label": label,
+                            "type": "pose",
+                            "points": [],
+                            "rect": [cx, cy, w, h],
+                            "angle": 0.0,
+                            "keypoints": keypoints,
+                            "kpt_shape": [len(keypoints), 3],
+                            "template_name": template_name
+                        }
+                        export_shapes.append(export_shape_dict)
+
+                # 4. 后台直接保存到对应的标注文件中
+                if export_shapes:
+                    base_name = os.path.splitext(img_path)[0]
+                    if self.current_format == "json":
+                        out_path = base_name + ".json"
+                        Exporter.save_json(out_path, img_path, w_img, h_img, export_shapes)
+                    elif self.current_format == "yolo":
+                        out_path = base_name + ".txt"
+                        Exporter.save_yolo(out_path, w_img, h_img, export_shapes, self.class_list)
+                    elif self.current_format == "xml":
+                        out_path = base_name + ".xml"
+                        Exporter.save_xml(out_path, img_path, w_img, h_img, export_shapes)
+
+                processed += 1
+
+            self.finished.emit(processed, total, list(detected_classes))
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.error.emit(str(e))
 
 
 class BatchProgressDialog(QDialog):
-    def __init__(self, parent=None, is_dark_theme=False):
+    def __init__(self, parent=None, is_dark_theme=False, title="SAM 3 批量标注中"):
         super().__init__(parent)
-        self.setWindowTitle("SAM 3 批量标注中")
+        self.setWindowTitle(title)
         self.setFixedSize(420, 180)
         self.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
         self.is_cancelled = False
@@ -503,30 +669,100 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.classListWidget.shape_class_reassigned.connect(self.on_shape_class_reassigned)
 
     def on_predict_clicked(self):
-        if not self.current_image_path:
-            DialogOver(self, "请先打开一张图片！", "提示", "warning")
-            return
-            
         if not getattr(self, 'current_yolo_predictor', None):
             DialogOver(self, "YOLO 模型未加载或初始化失败！", "提示", "warning")
             return
-            
+
         if self.yolo_worker and self.yolo_worker.isRunning():
             return
+
+        # 获取当前勾选的所有图片路径
+        checked_paths = []
+        for i in range(self.listFiles.count()):
+            item = self.listFiles.item(i)
+            if item and item.checkState() == Qt.Checked:
+                checked_paths.append(item.text())
+
+        if checked_paths:
+            # YOLO 批量预测逻辑
+            self.statusBar.showMessage(f"正在进行 YOLO 批量预测 ({len(checked_paths)}张图片)...", 3000)
+            self.batch_dialog = BatchProgressDialog(self, self.is_dark_theme, "YOLO 批量预测中")
             
-        self.statusBar.showMessage("正在使用 YOLO 进行预测...", 3000)
-        self.helpLabel.setText("正在使用 YOLO 进行预测...")
-        self.helpLabel.setStyleSheet("color: orange;")
-        self.original_predict_text = self.btnPredict.text()
-        self.btnPredict.setText("预测中")
-        
-        self.predict_movie.start()
-        self.btnPredict.setEnabled(False)
-        
-        self.yolo_worker = YoloPredictorWorker(self.current_yolo_predictor, self.current_image_path)
-        self.yolo_worker.finished.connect(self.on_predict_finished)
-        self.yolo_worker.error.connect(self.on_predict_error)
-        self.yolo_worker.start()
+            self.yolo_worker = YoloBatchPredictorWorker(
+                predictor=self.current_yolo_predictor,
+                img_paths=checked_paths,
+                current_format=self.current_format,
+                class_list=self.class_list,
+                template_manager=self.template_manager
+            )
+
+            # 连接进度更新
+            def update_progress(current, total, filename):
+                percent = int((current / total) * 100) if total > 0 else 0
+                self.batch_dialog.progress_bar.setValue(percent)
+                self.batch_dialog.status_label.setText(f"正在预测 ({current + 1}/{total}):\n{filename}")
+                
+            self.yolo_worker.progress.connect(update_progress)
+
+            # 完成回调
+            def on_batch_finished(processed, total, detected_classes):
+                self.batch_dialog.movie.stop()
+                self.batch_dialog.accept()
+                
+                # 同步新增的类别到历史面板
+                added_classes = []
+                for cls in detected_classes:
+                    if cls not in self.class_list:
+                        self.add_class_to_list(cls)
+                        added_classes.append(cls)
+                if added_classes:
+                    self.save_classes()
+
+                # 如果当前打开的图片刚好在批量预测的列表中，重新加载以即时渲染预测标注
+                if self.current_image_path in checked_paths:
+                    self.scene.clear_shapes()
+                    self.load_annotations(self.current_image_path)
+                    self.apply_class_colors_to_scene()
+                    self.update_annotation_tree()
+                    self.push_state()
+
+                DialogOver(self, f"YOLO 批量预测完成！已成功处理 {processed}/{total} 张图片并自动保存。", "批量预测成功", "success")
+                self.statusBar.showMessage(f"批量预测完成！处理了 {processed} 张图片", 5000)
+
+            # 错误回调
+            def on_batch_error(err_msg):
+                self.batch_dialog.movie.stop()
+                self.batch_dialog.reject()
+                DialogOver(self, f"批量预测出错: {err_msg}", "预测失败", "danger")
+                self.statusBar.showMessage("批量预测出错", 3000)
+
+            self.yolo_worker.finished.connect(on_batch_finished)
+            self.yolo_worker.error.connect(on_batch_error)
+            
+            # 取消按钮连接
+            self.batch_dialog.btn_cancel.clicked.connect(lambda: setattr(self.yolo_worker, 'is_cancelled', True))
+
+            self.yolo_worker.start()
+            self.batch_dialog.exec()
+        else:
+            # 默认单张图片预测逻辑
+            if not self.current_image_path:
+                DialogOver(self, "请先打开一张图片！", "提示", "warning")
+                return
+                
+            self.statusBar.showMessage("正在使用 YOLO 进行预测...", 3000)
+            self.helpLabel.setText("正在使用 YOLO 进行预测...")
+            self.helpLabel.setStyleSheet("color: orange;")
+            self.original_predict_text = self.btnPredict.text()
+            self.btnPredict.setText("预测中")
+            
+            self.predict_movie.start()
+            self.btnPredict.setEnabled(False)
+            
+            self.yolo_worker = YoloPredictorWorker(self.current_yolo_predictor, self.current_image_path)
+            self.yolo_worker.finished.connect(self.on_predict_finished)
+            self.yolo_worker.error.connect(self.on_predict_error)
+            self.yolo_worker.start()
 
     def on_predict_finished(self, shapes):
         self.predict_movie.stop()
@@ -627,6 +863,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                 template["connections"].append([p1 - 1, p2 - 1])
                             else:
                                 template["connections"].append([p1, p2])
+                                
+                    # 保存动态构建的骨架模板到本地模板库，以便再次打开时完美连线
+                    self.template_manager.add_template(template)
                 else:
                     # 兜底方案：尝试从本地模板库匹配
                     template = self.scene.current_pose_template
