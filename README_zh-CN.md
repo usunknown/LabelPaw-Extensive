@@ -16,6 +16,7 @@
 
 ## 更新日志
 
+- 2026-05-28：新增sam3批量智能标注和多个提示词标注，并增加YOLO26模型批量标注，文件列表新增删除和多选按钮等等功能优化。
 - 2026-05-27：删除类别选择的窗口，统一改成在右侧的历史类别面板修改与新增类别、可在历史类别删除和隐藏指定目标框等功能优化。
 - 2026-05-15：新增人脸、手部、行人等关键点模板骨架，可自定义关键点模板与连线。
 - 2026-05-14：新增 SAM2.1 模型，实现智能点选标注，并集成了 Ultralytics YOLO 模型，YOLO 模型可用于矩形、分割、关键点、obb智能标注。
@@ -35,7 +36,9 @@
 
 | 功能             | 界面演示                                                     |
 | ---------------- | ------------------------------------------------------------ |
-| 多边形标注       | ![在这里插入图片描述](assets/3907465018334ef597d142779b2b8b61-177985711229411.png) |
+| sam3批量标注     | ![在这里插入图片描述](assets/0fe12a65b4064e6c964520232569302b.png) |
+| YOLO模型批量标注 | ![在这里插入图片描述](assets/797b72992f5c48ac93f0097fef943efe.png) |
+| 关键点标注       | ![在这里插入图片描述](assets/3907465018334ef597d142779b2b8b61-177985711229411.png) |
 | OBB智能标注      | ![在这里插入图片描述](assets/52c66efbccbe4c91ba2a334cb9006939-177985711229413.png) |
 | 矩形智能标注     | ![在这里插入图片描述](assets/d87d307971c9475182bb7c5a1756aed8-177985711229415.png) |
 | 关键点智能标注   | ![在这里插入图片描述](assets/a8a9ebdb1e56464aac57307318446bdc-177985711229417.png) |
@@ -279,7 +282,7 @@ pip install ultralytics
 >方法1：在项目根目录下新建一个 weights 文件夹，存放模型，模型存放结构看上文介绍
 
 >方法2：在其他地方新建一个 weights 文件夹，存放模型，模型存放结构看上文介绍，**只需**修改代码中的一个基础路径变量：
-打开 `main.py`、`core/sam_client.py` 以及 `ui/model_selector_dialog.py`，找到里面的 `HARDCODED_DEV_DIR`变量，将其统一修改为您本地 `weights` 文件夹的绝对路径： **HARDCODED_DEV_DIR= r"你的绝对路径\weights"**
+打开 `main.py`、`labelpaw/models/sam_client.py` 以及 `ui/model_selector_dialog.py`，找到里面的 `HARDCODED_DEV_DIR` 变量，将其统一修改为您本地 `weights` 文件夹的绝对路径： **HARDCODED_DEV_DIR= r"你的绝对路径\weights"**
 
 
 *(注：系统会自动扫描该目录下所有形如 `yolo*_weights` 的子文件夹并加载 YOLO 模型，因此你只需放好模型，无需再手动指定 YOLO 的子目录！)*
@@ -330,7 +333,7 @@ python main.py
 
 系统采用模块化设计，高内聚低耦合，前端 UI 与底层模型推理分离。
 - `main.py`：主控界面与事件路由。
-- `核心绘图 (`canvas.py`)、数据导出 (`exporter.py`)、SAM 推理 (`sam_client.py`)、YOLO 推理 (`yolo_predictor.py`)。
+- `labelpaw/`：核心模块，包含绘图画布 (`graphics/canvas.py`)、数据格式导出 (`data/exporter.py`)、SAM 智能模型推理 (`models/sam_client.py`) 以及 YOLO 智能模型推理 (`models/yolo_predictor.py`)。
 - `ui/`：图形化组件与主题定制。
 
 欢迎广大开发者 Fork 并提交 PR！

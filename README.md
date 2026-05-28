@@ -15,6 +15,7 @@ Source Code Repository: [https://github.com/luohuabuxiema/LabelPaw](https://gith
 
 ## Changelog
 
+- **2026-05-28**: Added SAM 3 batch intelligent annotation, multi-prompt annotation support, and YOLO batch prediction annotation. Integrated new features including delete and multi-select checkbox buttons in the file list panel, along with other comprehensive UI optimizations.
 - **2026-05-27**: Removed the class selection dialog and unified class modification and creation within the right-side category history panel. Optimized operations including deleting and hiding specified target boxes in the category tree view.
 - **2026-05-15**: Added keypoint skeleton templates for human faces, hands, and pedestrians. Supports customizing keypoint templates and connectivity lines.
 - **2026-05-14**: Added the SAM2.1 model for intelligent point-click annotation, and integrated the Ultralytics YOLO model. The YOLO model can be used for intelligent annotation of rectangles, segmentations, keypoints, and OBB (Oriented Bounding Boxes).
@@ -34,10 +35,12 @@ The system is built based on PySide6 and integrates the **SAM2**, **SAM3**, and 
 
 | Feature             | Interface Demonstration                                                     |
 | ---------------- | ------------------------------------------------------------ |
-| Polygon Annotation       | ![Polygon](assets/3907465018334ef597d142779b2b8b61-177985711229411.png) |
+| SAM 3 Batch Annotation     | ![SAM 3 Batch](assets/0fe12a65b4064e6c964520232569302b.png) |
+| YOLO Model Batch Prediction | ![YOLO Batch](assets/797b72992f5c48ac93f0097fef943efe.png) |
+| Keypoint Annotation       | ![Keypoint](assets/3907465018334ef597d142779b2b8b61-177985711229411.png) |
 | OBB Intelligent Annotation      | ![OBB](assets/52c66efbccbe4c91ba2a334cb9006939-177985711229413.png) |
 | Rectangle Intelligent Annotation     | ![Rectangle](assets/d87d307971c9475182bb7c5a1756aed8-177985711229415.png) |
-| Keypoint Intelligent Annotation   | ![Keypoint](assets/a8a9ebdb1e56464aac57307318446bdc-177985711229417.png) |
+| Keypoint Intelligent Annotation   | ![Keypoint Intelligent](assets/a8a9ebdb1e56464aac57307318446bdc-177985711229417.png) |
 | Hand Keypoint Template   | ![Hand Keypoint](assets/615b3d73adb84378bd87128d5869a316-177985711229419.png) |
 | Built-in Keypoint Templates   | ![Built-in Keypoints](assets/b2540b59b9e34f7491d1499f3d125e76-177985711229421.png) |
 | Face Keypoint Template   | ![Face Keypoints](assets/b2b2aebc9db1438aadb3cafddb48a8f0-177985711229423.png) |
@@ -272,7 +275,7 @@ For the system to detect your weights, you have two options:
 > **Option 1**: Create a folder named `weights` directly in the project root directory, and place models inside following the structure above.
 
 > **Option 2**: Create a `weights` folder elsewhere on your system. **Only** change one base path variable in the codebase:
-> Open `main.py`, `core/sam_client.py`, and `ui/model_selector_dialog.py`, find the `HARDCODED_DEV_DIR` variable, and change it to your local absolute path: **`HARDCODED_DEV_DIR = r"YourAbsolutePath\weights"`**
+> Open `main.py`, `labelpaw/models/sam_client.py`, and `ui/model_selector_dialog.py`, find the `HARDCODED_DEV_DIR` variable, and change it to your local absolute path: **`HARDCODED_DEV_DIR = r"YourAbsolutePath\weights"`**
 
 
 *(Note: The system dynamically scans all folders matching `yolo*_weights` in the directory, so you just need to drop the weights inside the directory without any extra manual configuration!)*
@@ -323,7 +326,7 @@ python main.py
 
 The application features a modular design with high cohesion and low coupling. UI and model inference are separated cleanly:
 - `main.py`: Main control window and event router.
-- Core draw canvas (`canvas.py`), data export (`exporter.py`), SAM client (`sam_client.py`), and YOLO predictor (`yolo_predictor.py`).
+- `labelpaw/`: Core packages including the draw canvas (`graphics/canvas.py`), dataset formatting exporter (`data/exporter.py`), SAM intelligent model inference (`models/sam_client.py`), and YOLO pose/detection inference (`models/yolo_predictor.py`).
 - `ui/`: Custom widgets and theme styles.
 
 We welcome developers to Fork the repository and submit PRs!
