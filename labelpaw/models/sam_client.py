@@ -477,10 +477,9 @@ class SAMClient(QObject):
     def request_text_inference(self, prompt_text):
         """文本提示词推理（仅 SAM3 支持）"""
         if self.current_model_type == "sam3" and self._sam3_worker:
-            import re
-            prompts = [p.strip() for p in re.split(r'[,，、\s]+', prompt_text) if p.strip()]
-            if prompts:
-                self._sam3_worker.request_text_inference(prompts)
+            prompt = prompt_text.strip()
+            if prompt:
+                self._sam3_worker.request_text_inference([prompt])
 
     def supports_text_prompt(self):
         """当前模型是否支持文本提示词"""

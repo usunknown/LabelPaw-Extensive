@@ -1929,9 +1929,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 DialogOver(self, "请先在上方选择并加载 SAM 3 模型以进行批量提示词处理！", "提示", "warning")
                 return
 
+            # 批量模式：逗号/顿号分隔多个提示词，空格不再分隔
             import re
-            prompts = [p.strip() for p in re.split(r'[,，、\s]+', prompt) if p.strip()]
+            prompts = [p.strip() for p in re.split(r'[,，、]+', prompt) if p.strip()]
             if not prompts:
+                prompts = [prompt]  # 无逗号时整句作为一个短语
+            if not any(p.strip() for p in prompts):
                 DialogOver(self, "输入的提示词无效，请重新输入！", "提示", "warning")
                 return
 
