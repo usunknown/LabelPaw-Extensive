@@ -2397,7 +2397,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def _update_help_text(self, mode):
         # 只有在智能模式开启，并且当前选择的是SAM模型时，才显示悬停预览提示
-        is_sam = self.samSwitch.isChecked() and getattr(self.sam_client, 'current_model_key', '').startswith('sam')
+        is_sam = self.samSwitch.isChecked() and self.sam_client is not None and self.sam_client.current_model_key is not None and self.sam_client.current_model_key.startswith('sam')
         if mode == CanvasMode.RECT:
             if is_sam:
                 self.helpLabel.setText("操作: 鼠标悬停实时预览外接矩形，左键点击直接确认生成矩形框")
@@ -2744,7 +2744,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.scene.pose_preview_item = None
 
             # 只有SAM模型才需要后台分析图片特征
-            is_sam = getattr(self.sam_client, 'current_model_key', '') and getattr(self.sam_client, 'current_model_key', '').startswith('sam')
+            is_sam = (self.sam_client is not None and self.sam_client.current_model_key is not None and self.sam_client.current_model_key.startswith('sam'))
             if is_sam:
                 if self.sam_client.model:
                     QApplication.processEvents()
