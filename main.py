@@ -1078,6 +1078,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_prompt_btn_icon()
         self.samPromptBtn.setEnabled(False)
         self.samPromptBtn.show()
+        self.samDetectBtn.setEnabled(False)
         
         # 绑定文字变化信号以实现动态状态切换
         self.samPromptInput.textChanged.connect(self.on_prompt_text_changed)
@@ -1126,6 +1127,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         supports_text = self.samPromptInput.isEnabled()
         has_text = bool(self.samPromptInput.text().strip())
         self.samPromptBtn.setEnabled(supports_text and has_text)
+        is_detecting = getattr(self, "_sam_text_detection_active", False)
+        self.samDetectBtn.setEnabled(supports_text and not is_detecting)
 
     def on_prompt_text_changed(self, text):
         self.update_prompt_btn_state()
@@ -1243,7 +1246,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.samPromptInput.setEnabled(supports_text)
             self.update_prompt_btn_state()
             if supports_text:
-                self.samPromptInput.setPlaceholderText("输入提示词提取 (如: dog、cat)")
+                self.samPromptInput.setPlaceholderText("输入一个提示词或短语")
             else:
                 self.samPromptInput.setPlaceholderText(f"{display_name} 不支持提示词")
 
@@ -1303,8 +1306,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.btnPredict.clicked.connect(self.on_predict_clicked)
         self.btnClassFilter.clicked.connect(self.on_class_filter_clicked)
 
-        self.samPromptBtn.clicked.connect(self.trigger_sam_prompt)
-        self.samPromptInput.returnPressed.connect(self.trigger_sam_prompt)
+        self.samPromptBtn.clicked.connect(self.add_sam_prompt)
+        self.samPromptInput.returnPressed.connect(self.add_sam_prompt)
+        self.samDetectBtn.clicked.connect(self.detect_all_sam_prompts)
 
         self.chkSelectAll.stateChanged.connect(self.on_select_all_toggled)
         self.btnDeleteFiles.clicked.connect(self.delete_checked_files)
@@ -1910,7 +1914,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         except Exception as e:
             DialogOver(self, f"启动失败: {e}", "系统错误", "danger")
 
-    def trigger_sam_prompt(self):
+    def add_sam_prompt(self):
         prompt = " ".join(self.samPromptInput.text().split())
         if not prompt:
             DialogOver(self, "请输入一个提示词或短语。", "提示", "warning")
@@ -1938,9 +1942,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.helpLabel.setStyleSheet("color: green;")
         return
 
-        prompt = self.samPromptInput.text().strip()
-        if not prompt:
-            DialogOver(self, "请输入提示词进行提取！", "提示", "warning")
+    def detect_all_sam_prompts(self):
+        prompts = self.classListWidget.get_class_list()
+        if not prompts:
+            DialogOver(self, "请先添加至少一个提示词。", "提示", "warning")
+            return
+
+        if self.sam_client.current_model_type != "sam3" or not self.sam_client.model or not self.sam_client.processor:
+            DialogOver(self, "请先加载 SAM 3 模型。", "提示", "warning")
             return
 
         # 收集所有勾选的文件
@@ -1954,15 +1963,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # 批量处理逻辑
             if self.sam_client.current_model_type != "sam3" or not self.sam_client.model or not self.sam_client.processor:
                 DialogOver(self, "请先在上方选择并加载 SAM 3 模型以进行批量提示词处理！", "提示", "warning")
-                return
-
-            # 批量模式：逗号/顿号分隔多个提示词，空格不再分隔
-            import re
-            prompts = [p.strip() for p in re.split(r'[,，、]+', prompt) if p.strip()]
-            if not prompts:
-                prompts = [prompt]  # 无逗号时整句作为一个短语
-            if not any(p.strip() for p in prompts):
-                DialogOver(self, "输入的提示词无效，请重新输入！", "提示", "warning")
                 return
 
             self.batch_dialog = BatchProgressDialog(self, self.is_dark_theme)
@@ -2033,15 +2033,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 return
 
             self.samSwitch.setChecked(True)
-            self.helpLabel.setText(f"正在提取提示词: {prompt}...")
+            self._sam_text_detection_active = True
+            self._sam_text_pending_prompts = set(prompts)
+            self._sam_text_prompt_total = len(prompts)
+            self._sam_text_object_count = 0
+            self._sam_text_had_results = False
+            self.samDetectBtn.setEnabled(False)
+
+            if self.btnOverwrite.isChecked():
+                self.scene.clear_shapes()
+                self.update_annotation_tree()
+
+            self.helpLabel.setText(f"正在检测 {len(prompts)} 个提示词...")
             self.helpLabel.setStyleSheet("color: orange;")
-            self.sam_client.request_text_inference(prompt)
+            self.sam_client.request_text_inference(prompts)
 
     def handle_text_results(self, results, prompt_text):
+        is_multi_prompt_detection = getattr(self, "_sam_text_detection_active", False)
+
         if not results:
-            self.helpLabel.setText(f"提取完成: 未发现关于 '{prompt_text}' 的目标")
-            self.helpLabel.setStyleSheet("color: red;")
-            if self.btnOverwrite.isChecked():
+            if is_multi_prompt_detection:
+                self._finish_sam_prompt_result(prompt_text, 0)
+            else:
+                self.helpLabel.setText(f"提取完成: 未发现关于 '{prompt_text}' 的目标")
+                self.helpLabel.setStyleSheet("color: red;")
+            if self.btnOverwrite.isChecked() and not is_multi_prompt_detection:
                 self.scene.clear_shapes()
                 self.update_annotation_tree()
                 self.auto_save_annotation()
@@ -2055,7 +2071,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.add_class_to_list(prompt_text)
             self.save_classes()
 
-        if self.btnOverwrite.isChecked():
+        if self.btnOverwrite.isChecked() and not is_multi_prompt_detection:
             self.scene.clear_shapes()
 
         for res in results:
@@ -2088,6 +2104,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_annotation_tree()
         self.auto_save_annotation()
         self.push_state()
+
+        if is_multi_prompt_detection:
+            self._finish_sam_prompt_result(prompt_text, len(results))
+
+    def _finish_sam_prompt_result(self, prompt_text, result_count):
+        pending = getattr(self, "_sam_text_pending_prompts", set())
+        pending.discard(prompt_text)
+        self._sam_text_object_count = getattr(self, "_sam_text_object_count", 0) + result_count
+        if result_count:
+            self._sam_text_had_results = True
+
+        if pending:
+            total = getattr(self, "_sam_text_prompt_total", len(pending))
+            self.helpLabel.setText(f"正在检测提示词 ({total - len(pending)}/{total})...")
+            self.helpLabel.setStyleSheet("color: orange;")
+            return
+
+        self._sam_text_detection_active = False
+        self.samDetectBtn.setEnabled(self.samPromptInput.isEnabled())
+        self.helpLabel.setText(f"检测完成: 共发现 {self._sam_text_object_count} 个目标")
+        self.helpLabel.setStyleSheet(
+            "color: green;" if self._sam_text_object_count else "color: red;"
+        )
+        if self.btnOverwrite.isChecked() and not self._sam_text_had_results:
+            self.update_annotation_tree()
+            self.auto_save_annotation()
+            self.push_state()
 
     def delete_selected(self):
         for item in self.scene.selectedItems():
@@ -2265,7 +2308,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         <h3>【SAM 智能辅助】</h3>
         <ul>
             <li><b>鼠标点选</b>：开启开关后，鼠标悬停预览，点击直接确认生成高精度轮廓。</li>
-            <li><b>提示词提取</b>：在右下角输入框输入目标名称（如: dog、cat），按回车即可一键全图抓取并打好框！左侧选中的是“矩形”还是“多边形”格式。</li>
+            <li><b>提示词检测</b>：在右下角逐个添加提示词或短语，再点击“检测全部提示词”，即可按当前矩形、多边形或旋转框格式生成标注。</li>
         </ul>
         """
         QMessageBox.about(self, "LabelPaw 使用说明", help_text)
@@ -2403,6 +2446,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             self.samPromptInput.setEnabled(False)
             self.samPromptBtn.setEnabled(False)
+            self.samDetectBtn.setEnabled(False)
             self.samPromptInput.setPlaceholderText("点标注模式下文本提示不可用")
             
             if not self.scene.current_pose_template and not is_yolo_pose:
@@ -2419,7 +2463,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.update_prompt_btn_state()
             
             if supports_text:
-                self.samPromptInput.setPlaceholderText("输入提示词提取 (如: dog、cat)")
+                self.samPromptInput.setPlaceholderText("输入一个提示词或短语")
             else:
                 self.samPromptInput.setPlaceholderText("当前模型不支持提示词")
                 

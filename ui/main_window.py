@@ -708,6 +708,13 @@ class Ui_MainWindow(object):
 
         textLayout.addLayout(bottomLayout)
 
+        self.samDetectBtn = QPushButton("检测全部提示词")
+        self.samDetectBtn.setObjectName("samDetectBtn")
+        self.samDetectBtn.setToolTip("使用右侧列表中的全部提示词检测目标")
+        self.samDetectBtn.setCursor(Qt.PointingHandCursor)
+        self.samDetectBtn.setMinimumHeight(32)
+        textLayout.addWidget(self.samDetectBtn)
+
         self.dockLayout.addWidget(self.samTextGroup)
 
         self.contentSplitter.addWidget(self.rightPanel)

@@ -286,6 +286,25 @@ QLabel { color: #cbd5e1; background: transparent; }
     background-color: #1E293B;
 }
 
+#samDetectBtn {
+    background-color: #22C55E;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+#samDetectBtn:hover {
+    background-color: #4ADE80;
+}
+#samDetectBtn:pressed {
+    background-color: #16A34A;
+}
+#samDetectBtn:disabled {
+    background-color: #1E293B;
+    color: #64748B;
+}
+
 #btnOverwrite {
     background-color: transparent;
     border: 1px solid #334155;
@@ -723,6 +742,25 @@ QLabel { color: #334155; background: transparent; }
 }
 #samPromptBtn:disabled {
     background-color: #E2E8F0;
+}
+
+#samDetectBtn {
+    background-color: #22C55E;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+#samDetectBtn:hover {
+    background-color: #4ADE80;
+}
+#samDetectBtn:pressed {
+    background-color: #16A34A;
+}
+#samDetectBtn:disabled {
+    background-color: #E2E8F0;
+    color: #94A3B8;
 }
 
 #btnOverwrite {
