@@ -24,6 +24,42 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 
+def _keep_non_overlapping_mask_indices(masks, scores, iom_threshold=0.3):
+    """按置信度保留候选，并移除与更高分候选高度重叠的 mask。"""
+    if len(masks) <= 1:
+        return list(range(len(masks)))
+
+    score_values = [
+        float(score.detach().cpu()) if torch.is_tensor(score) else float(score)
+        for score in scores
+    ]
+    order = sorted(range(len(masks)), key=lambda index: score_values[index], reverse=True)
+    kept_indices = []
+    kept_masks = []
+
+    for index in order:
+        mask = masks[index]
+        if torch.is_tensor(mask):
+            candidate = mask.squeeze().bool()
+        else:
+            candidate = torch.as_tensor(np.squeeze(mask) > 0.5, dtype=torch.bool)
+
+        candidate_area = candidate.sum()
+        is_duplicate = False
+        for kept_mask in kept_masks:
+            intersection = torch.logical_and(candidate, kept_mask).sum()
+            min_area = torch.minimum(candidate_area, kept_mask.sum()).clamp_min(1)
+            if float(intersection.float() / min_area.float()) > iom_threshold:
+                is_duplicate = True
+                break
+
+        if not is_duplicate:
+            kept_indices.append(index)
+            kept_masks.append(candidate)
+
+    return sorted(kept_indices)
+
+
 # ============== SAM Model Map ==============
 import sys
 
@@ -186,7 +222,10 @@ class Sam3InferenceWorker(QThread):
 
                             results = []
                             if len(masks) > 0:
-                                for i in range(len(masks)):
+                                keep_indices = _keep_non_overlapping_mask_indices(
+                                    masks, scores, iom_threshold=0.3
+                                )
+                                for i in keep_indices:
                                     mask_np = masks[i].cpu().numpy() if torch.is_tensor(masks[i]) else masks[i]
                                     mask_np = np.squeeze(mask_np)
 
