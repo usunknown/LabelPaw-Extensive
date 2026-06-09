@@ -693,9 +693,21 @@ class Ui_MainWindow(object):
         self.samPromptInput.setFrame(False)
         textLayout.addWidget(self.samPromptInput)
 
+        self.samPromptList = QListWidget()
+        self.samPromptList.setObjectName("samPromptList")
+        self.samPromptList.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.samPromptList.setMaximumHeight(100)
+        textLayout.addWidget(self.samPromptList)
+
         # 底部操作栏
         bottomLayout = QHBoxLayout()
         bottomLayout.setContentsMargins(0, 0, 0, 0)
+
+        self.samPromptDeleteBtn = QPushButton("删除选中")
+        self.samPromptDeleteBtn.setObjectName("samPromptDeleteBtn")
+        self.samPromptDeleteBtn.setToolTip("只删除检测提示词，不删除类别和已有标注")
+        self.samPromptDeleteBtn.setCursor(Qt.PointingHandCursor)
+        bottomLayout.addWidget(self.samPromptDeleteBtn)
 
         bottomLayout.addStretch()
 
@@ -710,7 +722,7 @@ class Ui_MainWindow(object):
 
         self.samDetectBtn = QPushButton("检测全部提示词")
         self.samDetectBtn.setObjectName("samDetectBtn")
-        self.samDetectBtn.setToolTip("使用右侧列表中的全部提示词检测目标")
+        self.samDetectBtn.setToolTip("使用提示词列表中的全部提示词检测目标")
         self.samDetectBtn.setCursor(Qt.PointingHandCursor)
         self.samDetectBtn.setMinimumHeight(32)
         textLayout.addWidget(self.samDetectBtn)

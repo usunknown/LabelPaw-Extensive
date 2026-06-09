@@ -270,6 +270,33 @@ QLabel { color: #cbd5e1; background: transparent; }
     padding: 2px 4px;
 }
 
+#samPromptList {
+    background-color: #111827;
+    color: #F8FAFC;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 3px;
+}
+#samPromptList::item {
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+#samPromptList::item:selected {
+    background-color: #334155;
+}
+
+#samPromptDeleteBtn {
+    background-color: transparent;
+    color: #94A3B8;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+#samPromptDeleteBtn:hover {
+    color: #F87171;
+    border-color: #F87171;
+}
+
 #samPromptBtn {
     background-color: #22C55E;
     border: none;
@@ -726,6 +753,33 @@ QLabel { color: #334155; background: transparent; }
     color: #0F172A;
     font-size: 13px;
     padding: 2px 4px;
+}
+
+#samPromptList {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 3px;
+}
+#samPromptList::item {
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+#samPromptList::item:selected {
+    background-color: #E2E8F0;
+}
+
+#samPromptDeleteBtn {
+    background-color: transparent;
+    color: #64748B;
+    border: 1px solid #CBD5E1;
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+#samPromptDeleteBtn:hover {
+    color: #DC2626;
+    border-color: #DC2626;
 }
 
 #samPromptBtn {
