@@ -1078,7 +1078,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_prompt_btn_icon()
         self.samPromptBtn.setEnabled(False)
         self.samPromptBtn.show()
-        self.samDetectBtn.setEnabled(False)
+        self.update_prompt_btn_state()
         
         # 绑定文字变化信号以实现动态状态切换
         self.samPromptInput.textChanged.connect(self.on_prompt_text_changed)
@@ -2682,6 +2682,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.helpLabel.setText(msg)
         if success:
             self.helpLabel.setStyleSheet("color: green;")
+            self.update_prompt_btn_state()
             # 模型加载成功后，检查用户是不是已经提前打开图片了
             if self.current_image_path:
                 # self.helpLabel.setText("模型已就绪，正在自动分析当前图片特征...")
