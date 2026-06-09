@@ -688,7 +688,7 @@ class Ui_MainWindow(object):
 
         # 顶部输入框：无边框，透明背景
         self.samPromptInput = QLineEdit()
-        self.samPromptInput.setPlaceholderText("输入提示词提取 (如: dog)")
+        self.samPromptInput.setPlaceholderText("输入一个提示词或短语")
         self.samPromptInput.setObjectName("samPromptInput")
         self.samPromptInput.setFrame(False)
         textLayout.addWidget(self.samPromptInput)
@@ -701,6 +701,7 @@ class Ui_MainWindow(object):
 
         self.samPromptBtn = QPushButton()
         self.samPromptBtn.setObjectName("samPromptBtn")
+        self.samPromptBtn.setToolTip("添加提示词")
         self.samPromptBtn.setCursor(Qt.PointingHandCursor)
         self.samPromptBtn.setFixedSize(28, 28)
         bottomLayout.addWidget(self.samPromptBtn)

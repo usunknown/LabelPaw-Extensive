@@ -1911,6 +1911,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             DialogOver(self, f"启动失败: {e}", "系统错误", "danger")
 
     def trigger_sam_prompt(self):
+        prompt = " ".join(self.samPromptInput.text().split())
+        if not prompt:
+            DialogOver(self, "请输入一个提示词或短语。", "提示", "warning")
+            return
+
+        if not prompt.isprintable() or any(ch in prompt for ch in ",，、;；"):
+            DialogOver(
+                self,
+                "每次只能添加一个提示词或短语，请勿输入逗号、分号或控制字符。",
+                "提示词无效",
+                "warning"
+            )
+            self.samPromptInput.clear()
+            return
+
+        if prompt in self.class_list:
+            DialogOver(self, f"提示词“{prompt}”已存在。", "提示", "warning")
+            self.samPromptInput.clear()
+            return
+
+        self.add_class_to_list(prompt)
+        self.save_classes()
+        self.samPromptInput.clear()
+        self.helpLabel.setText(f"已添加提示词: {prompt}")
+        self.helpLabel.setStyleSheet("color: green;")
+        return
+
         prompt = self.samPromptInput.text().strip()
         if not prompt:
             DialogOver(self, "请输入提示词进行提取！", "提示", "warning")
