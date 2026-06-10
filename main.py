@@ -1026,7 +1026,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.current_image_path = None
         self.current_dir = None
         self.class_list = []
-        self.sam_prompts = []
         self.current_format = "json"
         self.yolo_filtered_class_ids = []
 
@@ -1309,7 +1308,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.samPromptBtn.clicked.connect(self.add_sam_prompt)
         self.samPromptInput.returnPressed.connect(self.add_sam_prompt)
-        self.samPromptDeleteBtn.clicked.connect(self.delete_selected_sam_prompt)
         self.samDetectBtn.clicked.connect(self.detect_all_sam_prompts)
 
         self.chkSelectAll.stateChanged.connect(self.on_select_all_toggled)
@@ -1932,79 +1930,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.samPromptInput.clear()
             return
 
-        if prompt in self.sam_prompts:
+        if prompt in self.class_list:
             DialogOver(self, f"提示词“{prompt}”已存在。", "提示", "warning")
             self.samPromptInput.clear()
             return
 
-        self.sam_prompts.append(prompt)
-        self.refresh_sam_prompt_list()
-        self.save_sam_prompts()
+        self.add_class_to_list(prompt)
+        self.save_classes()
         self.samPromptInput.clear()
         self.helpLabel.setText(f"已添加提示词: {prompt}")
         self.helpLabel.setStyleSheet("color: green;")
         return
 
-    def delete_selected_sam_prompt(self):
-        item = self.samPromptList.currentItem()
-        if item is None:
-            DialogOver(self, "请先选择要删除的提示词。", "提示", "warning")
-            return
-
-        prompt = item.text()
-        reply = QMessageBox.question(
-            self,
-            "删除提示词",
-            f"确定删除提示词“{prompt}”吗？\n已有类别和标注将保留。",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
-
-        self.sam_prompts.remove(prompt)
-        self.refresh_sam_prompt_list()
-        self.save_sam_prompts()
-        self.helpLabel.setText(f"已删除提示词: {prompt}（已有标注未修改）")
-        self.helpLabel.setStyleSheet("color: green;")
-
-    def refresh_sam_prompt_list(self):
-        self.samPromptList.clear()
-        self.samPromptList.addItems(self.sam_prompts)
-
-    def load_sam_prompts(self, dir_path):
-        prompt_file = os.path.join(dir_path, "sam_prompts.json")
-        prompts = []
-        prompt_file_exists = os.path.exists(prompt_file)
-        if prompt_file_exists:
-            try:
-                with open(prompt_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, list):
-                    prompts = [str(prompt).strip() for prompt in data if str(prompt).strip()]
-            except Exception as e:
-                print(f"加载提示词失败: {e}")
-        else:
-            # 首次升级时沿用现有类别，之后提示词与类别独立维护。
-            prompts = list(self.class_list)
-
-        self.sam_prompts = list(dict.fromkeys(prompts))
-        self.refresh_sam_prompt_list()
-        if not prompt_file_exists:
-            self.save_sam_prompts()
-
-    def save_sam_prompts(self):
-        if not self.current_dir:
-            return
-        prompt_file = os.path.join(self.current_dir, "sam_prompts.json")
-        try:
-            with open(prompt_file, "w", encoding="utf-8") as f:
-                json.dump(self.sam_prompts, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"保存提示词失败: {e}")
-
     def detect_all_sam_prompts(self):
-        prompts = list(self.sam_prompts)
+        prompts = self.classListWidget.get_class_list()
         if not prompts:
             DialogOver(self, "请先添加至少一个提示词。", "提示", "warning")
             return
@@ -2552,7 +2491,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.class_list.clear()
         self.classListWidget.load_classes(dir_path)
         self.class_list = self.classListWidget.get_class_list()
-        self.load_sam_prompts(dir_path)
 
     def save_classes(self):
         if self.current_dir:
