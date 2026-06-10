@@ -33,7 +33,10 @@ class SamBatchWorker(QThread):
     finished = Signal(int, int)  # processed, total
     error = Signal(str)
 
-    def __init__(self, processor, model, img_paths, prompts, current_format, class_list, canvas_mode, overwrite=False):
+    def __init__(
+        self, processor, model, img_paths, prompts, current_format, class_list,
+        canvas_mode, confidence_thresholds, overwrite=False
+    ):
         super().__init__()
         self.processor = processor
         self.model = model
@@ -42,6 +45,7 @@ class SamBatchWorker(QThread):
         self.current_format = current_format
         self.class_list = list(class_list)
         self.canvas_mode = canvas_mode
+        self.confidence_thresholds = dict(confidence_thresholds)
         self.is_cancelled = False
         self.overwrite = overwrite
 
@@ -72,6 +76,9 @@ class SamBatchWorker(QThread):
                         break
 
                     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                        self.processor.set_confidence_threshold(
+                            self.confidence_thresholds[prompt]
+                        )
                         out_state = self.processor.set_text_prompt(prompt=prompt, state=state)
 
                         masks = out_state.get("masks", [])
@@ -1026,6 +1033,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.current_image_path = None
         self.current_dir = None
         self.class_list = []
+        self.sam_confidence_threshold = 0.5
+        self.class_confidence_thresholds = {}
         self.current_format = "json"
         self.yolo_filtered_class_ids = []
 
@@ -1082,6 +1091,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # 绑定文字变化信号以实现动态状态切换
         self.samPromptInput.textChanged.connect(self.on_prompt_text_changed)
+        self.samConfidenceSlider.valueChanged.connect(
+            self.on_global_confidence_changed
+        )
+        self._sync_confidence_ui()
         
         # 安装事件过滤器以实现 focus 边框变化
         self.samPromptInput.installEventFilter(self)
@@ -1244,6 +1257,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 只有不在点标注模式下才启用，因为点标注即使是SAM3也不可用
         if self.scene.mode != CanvasMode.POINT:
             self.samPromptInput.setEnabled(supports_text)
+            self.samConfidenceSlider.setEnabled(supports_text)
             self.update_prompt_btn_state()
             if supports_text:
                 self.samPromptInput.setPlaceholderText("输入一个提示词或短语")
@@ -1329,6 +1343,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.classListWidget.class_added.connect(self._on_class_added_from_widget)
         self.classListWidget.class_renamed.connect(self._on_class_renamed_from_widget)
         self.classListWidget.class_delete_requested.connect(self._on_class_delete_requested)
+        self.classListWidget.class_threshold_requested.connect(
+            self._on_class_threshold_requested
+        )
+        self.classListWidget.class_threshold_reset_requested.connect(
+            self._on_class_threshold_reset_requested
+        )
         self.classListWidget.color_changed.connect(self.on_class_color_changed)
         self.classListWidget.item_changed.connect(self.on_list_item_changed)
         self.classListWidget.shape_class_reassigned.connect(self.on_shape_class_reassigned)
@@ -1650,6 +1670,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if old_name in self.class_list:
             idx = self.class_list.index(old_name)
             self.class_list[idx] = new_name
+            if old_name in self.class_confidence_thresholds:
+                self.class_confidence_thresholds[new_name] = (
+                    self.class_confidence_thresholds.pop(old_name)
+                )
+                self.save_confidence_thresholds()
+                self._sync_confidence_ui()
             # 遍历画板更新形状标签
             changed = False
             for shape in self.scene.items():
@@ -1735,11 +1761,122 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
 
         self.class_list.remove(cls_name)
+        self.class_confidence_thresholds.pop(cls_name, None)
         self.classListWidget.remove_class(cls_name)
         self.save_classes()
+        self.save_confidence_thresholds()
+        self._sync_confidence_ui()
         self.classListWidget._save_colors()
         self.helpLabel.setText(f"已删除标签: {cls_name}")
         self.helpLabel.setStyleSheet("color: green;")
+
+    def on_global_confidence_changed(self, value):
+        normalized = max(5, min(95, round(value / 5) * 5))
+        if normalized != value:
+            self.samConfidenceSlider.blockSignals(True)
+            self.samConfidenceSlider.setValue(normalized)
+            self.samConfidenceSlider.blockSignals(False)
+        value = normalized
+        self.sam_confidence_threshold = value / 100.0
+        self.samConfidenceValue.setText(f"{value}%")
+        self.save_confidence_thresholds()
+        self._sync_confidence_ui(update_slider=False)
+
+    def _on_class_threshold_requested(self, cls_name):
+        current = self.class_confidence_thresholds.get(
+            cls_name, self.sam_confidence_threshold
+        )
+        value, accepted = QInputDialog.getInt(
+            self,
+            "设置标签置信度",
+            f"标签“{cls_name}”的最低置信度（5～95%）：",
+            round(current * 100),
+            5,
+            95,
+            5
+        )
+        if not accepted:
+            return
+
+        self.class_confidence_thresholds[cls_name] = value / 100.0
+        self.save_confidence_thresholds()
+        self._sync_confidence_ui()
+        self.helpLabel.setText(f"标签“{cls_name}”置信度已设为 {value}%")
+        self.helpLabel.setStyleSheet("color: green;")
+
+    def _on_class_threshold_reset_requested(self, cls_name):
+        if cls_name not in self.class_confidence_thresholds:
+            return
+        self.class_confidence_thresholds.pop(cls_name)
+        self.save_confidence_thresholds()
+        self._sync_confidence_ui()
+        self.helpLabel.setText(
+            f"标签“{cls_name}”已恢复统一置信度 "
+            f"{self.sam_confidence_threshold:.0%}"
+        )
+        self.helpLabel.setStyleSheet("color: green;")
+
+    def _sync_confidence_ui(self, update_slider=True):
+        if update_slider:
+            self.samConfidenceSlider.blockSignals(True)
+            self.samConfidenceSlider.setValue(
+                round(self.sam_confidence_threshold * 100)
+            )
+            self.samConfidenceSlider.blockSignals(False)
+        self.samConfidenceValue.setText(
+            f"{self.sam_confidence_threshold:.0%}"
+        )
+        self.classListWidget.set_confidence_thresholds(
+            self.sam_confidence_threshold,
+            self.class_confidence_thresholds
+        )
+
+    def get_effective_confidence_thresholds(self, prompts):
+        return {
+            prompt: self.class_confidence_thresholds.get(
+                prompt, self.sam_confidence_threshold
+            )
+            for prompt in prompts
+        }
+
+    def load_confidence_thresholds(self, dir_path):
+        self.sam_confidence_threshold = 0.5
+        self.class_confidence_thresholds = {}
+        threshold_file = os.path.join(dir_path, "class_thresholds.json")
+        if os.path.exists(threshold_file):
+            try:
+                with open(threshold_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                global_threshold = float(data.get("global", 0.5))
+                self.sam_confidence_threshold = min(
+                    0.95, max(0.05, global_threshold)
+                )
+                class_thresholds = data.get("classes", {})
+                if isinstance(class_thresholds, dict):
+                    self.class_confidence_thresholds = {
+                        str(name): min(0.95, max(0.05, float(threshold)))
+                        for name, threshold in class_thresholds.items()
+                        if str(name) in self.class_list
+                    }
+            except (OSError, ValueError, TypeError, json.JSONDecodeError) as e:
+                print(f"加载置信度配置失败: {e}")
+        self._sync_confidence_ui()
+
+    def save_confidence_thresholds(self):
+        if not self.current_dir:
+            return
+        threshold_file = os.path.join(
+            self.current_dir, "class_thresholds.json"
+        )
+        data = {
+            "global": self.sam_confidence_threshold,
+            "classes": self.class_confidence_thresholds
+        }
+        try:
+            with open(threshold_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            print(f"保存置信度配置失败: {e}")
 
     def _get_class_delete_block_reason(self, cls_name):
         shape_types = (RectShape, PolyShape, PointShape, RotatedRectShape, PoseShape)
@@ -2043,6 +2180,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not prompts:
             DialogOver(self, "请先添加至少一个提示词。", "提示", "warning")
             return
+        confidence_thresholds = self.get_effective_confidence_thresholds(prompts)
 
         if self.sam_client.current_model_type != "sam3" or not self.sam_client.model or not self.sam_client.processor:
             DialogOver(self, "请先加载 SAM 3 模型。", "提示", "warning")
@@ -2071,6 +2209,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 current_format=self.current_format,
                 class_list=self.class_list,
                 canvas_mode=self.scene.mode,
+                confidence_thresholds=confidence_thresholds,
                 overwrite=self.btnOverwrite.isChecked()
             )
 
@@ -2142,7 +2281,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.helpLabel.setText(f"正在检测 {len(prompts)} 个提示词...")
             self.helpLabel.setStyleSheet("color: orange;")
-            self.sam_client.request_text_inference(prompts)
+            self.sam_client.request_text_inference(
+                prompts, confidence_thresholds
+            )
 
     def handle_text_results(self, results, prompt_text):
         is_multi_prompt_detection = getattr(self, "_sam_text_detection_active", False)
@@ -2543,6 +2684,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.samPromptInput.setEnabled(False)
             self.samPromptBtn.setEnabled(False)
             self.samDetectBtn.setEnabled(False)
+            self.samConfidenceSlider.setEnabled(False)
             self.samPromptInput.setPlaceholderText("点标注模式下文本提示不可用")
             
             if not self.scene.current_pose_template and not is_yolo_pose:
@@ -2556,6 +2698,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             supports_text = self.sam_client.supports_text_prompt()
             self.samPromptInput.setEnabled(supports_text)
+            self.samConfidenceSlider.setEnabled(supports_text)
             self.update_prompt_btn_state()
             
             if supports_text:
@@ -2587,6 +2730,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.class_list.clear()
         self.classListWidget.load_classes(dir_path)
         self.class_list = self.classListWidget.get_class_list()
+        self.load_confidence_thresholds(dir_path)
 
     def save_classes(self):
         if self.current_dir:

@@ -1,7 +1,7 @@
 import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QToolBar, QListWidget, QGraphicsView,
-                               QLabel, QLineEdit, QPushButton, QStatusBar, QMenu, QComboBox, QSizePolicy, QAbstractItemView, QSplitter, QCheckBox, QFrame)
+                               QLabel, QLineEdit, QPushButton, QStatusBar, QMenu, QComboBox, QSizePolicy, QAbstractItemView, QSplitter, QCheckBox, QFrame, QSlider)
 from ui.annotation_tree_widget import AnnotationTreeWidget
 from PySide6.QtCore import Qt, Signal, QRect, QSize
 from PySide6.QtGui import QAction, QActionGroup, QPainter, QColor, QFont, QIcon, QPixmap
@@ -685,6 +685,27 @@ class Ui_MainWindow(object):
         textLayout = QVBoxLayout(self.samTextGroup)
         textLayout.setContentsMargins(12, 10, 10, 8)
         textLayout.setSpacing(6)
+
+        confidenceHeader = QHBoxLayout()
+        confidenceHeader.setContentsMargins(0, 0, 0, 0)
+        self.samConfidenceTitle = QLabel("统一置信度")
+        self.samConfidenceTitle.setObjectName("samConfidenceTitle")
+        self.samConfidenceValue = QLabel("50%")
+        self.samConfidenceValue.setObjectName("samConfidenceValue")
+        confidenceHeader.addWidget(self.samConfidenceTitle)
+        confidenceHeader.addStretch()
+        confidenceHeader.addWidget(self.samConfidenceValue)
+        textLayout.addLayout(confidenceHeader)
+
+        self.samConfidenceSlider = QSlider(Qt.Horizontal)
+        self.samConfidenceSlider.setObjectName("samConfidenceSlider")
+        self.samConfidenceSlider.setRange(5, 95)
+        self.samConfidenceSlider.setSingleStep(5)
+        self.samConfidenceSlider.setPageStep(5)
+        self.samConfidenceSlider.setTickInterval(5)
+        self.samConfidenceSlider.setValue(50)
+        self.samConfidenceSlider.setToolTip("统一设置 SAM 3 文本检测的最低置信度")
+        textLayout.addWidget(self.samConfidenceSlider)
 
         # 顶部输入框：无边框，透明背景
         self.samPromptInput = QLineEdit()

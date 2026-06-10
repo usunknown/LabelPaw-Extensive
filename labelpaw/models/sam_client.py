@@ -205,15 +205,16 @@ class Sam3InferenceWorker(QThread):
                         self.result_ready.emit(poly_pts, rect_xywh, rect_obb, score_val, is_click)
 
                 elif task_type == 'text':
-                    prompts = data
-                    if isinstance(prompts, str):
-                        prompts = [prompts]
+                    prompts, confidence_thresholds = data
                     
                     if not self.processor:
                         continue
 
                     for prompt_text in prompts:
                         with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                            self.processor.set_confidence_threshold(
+                                confidence_thresholds.get(prompt_text, 0.5)
+                            )
                             out_state = self.processor.set_text_prompt(prompt=prompt_text, state=self.inference_state)
 
                             masks = out_state.get("masks", [])
@@ -274,13 +275,15 @@ class Sam3InferenceWorker(QThread):
                 pass
         self.task_queue.put(('point', (x, y), is_click))
 
-    def request_text_inference(self, prompt_text):
+    def request_text_inference(self, prompts, confidence_thresholds):
         while not self.task_queue.empty():
             try:
                 self.task_queue.get_nowait()
             except queue.Empty:
                 pass
-        self.task_queue.put(('text', prompt_text, True))
+        self.task_queue.put(
+            ('text', (list(prompts), dict(confidence_thresholds)), True)
+        )
 
     def stop(self):
         self.running = False
@@ -513,7 +516,7 @@ class SAMClient(QObject):
         if self._active_worker:
             self._active_worker.request_inference(x, y, is_click)
 
-    def request_text_inference(self, prompt_text):
+    def request_text_inference(self, prompt_text, confidence_thresholds=None):
         """文本提示词推理（仅 SAM3 支持）"""
         if self.current_model_type == "sam3" and self._sam3_worker:
             if isinstance(prompt_text, str):
@@ -521,7 +524,13 @@ class SAMClient(QObject):
             else:
                 prompts = [prompt.strip() for prompt in prompt_text if prompt.strip()]
             if prompts:
-                self._sam3_worker.request_text_inference(prompts)
+                if confidence_thresholds is None:
+                    confidence_thresholds = {
+                        prompt: 0.5 for prompt in prompts
+                    }
+                self._sam3_worker.request_text_inference(
+                    prompts, confidence_thresholds
+                )
 
     def supports_text_prompt(self):
         """当前模型是否支持文本提示词"""

@@ -270,6 +270,31 @@ QLabel { color: #cbd5e1; background: transparent; }
     padding: 2px 4px;
 }
 
+#samConfidenceTitle, #samConfidenceValue {
+    color: #CBD5E1;
+    font-size: 12px;
+}
+#samConfidenceValue {
+    font-weight: 600;
+    color: #22C55E;
+}
+#samConfidenceSlider::groove:horizontal {
+    height: 5px;
+    background: #334155;
+    border-radius: 2px;
+}
+#samConfidenceSlider::sub-page:horizontal {
+    background: #22C55E;
+    border-radius: 2px;
+}
+#samConfidenceSlider::handle:horizontal {
+    width: 14px;
+    margin: -5px 0;
+    background: #F8FAFC;
+    border: 2px solid #22C55E;
+    border-radius: 7px;
+}
+
 #samPromptBtn {
     background-color: #22C55E;
     border: none;
@@ -726,6 +751,31 @@ QLabel { color: #334155; background: transparent; }
     color: #0F172A;
     font-size: 13px;
     padding: 2px 4px;
+}
+
+#samConfidenceTitle, #samConfidenceValue {
+    color: #64748B;
+    font-size: 12px;
+}
+#samConfidenceValue {
+    font-weight: 600;
+    color: #16A34A;
+}
+#samConfidenceSlider::groove:horizontal {
+    height: 5px;
+    background: #E2E8F0;
+    border-radius: 2px;
+}
+#samConfidenceSlider::sub-page:horizontal {
+    background: #22C55E;
+    border-radius: 2px;
+}
+#samConfidenceSlider::handle:horizontal {
+    width: 14px;
+    margin: -5px 0;
+    background: #FFFFFF;
+    border: 2px solid #22C55E;
+    border-radius: 7px;
 }
 
 #samPromptBtn {

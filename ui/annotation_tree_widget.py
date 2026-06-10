@@ -304,6 +304,8 @@ class AnnotationTreeWidget(QWidget):
     class_added = Signal(str)
     class_renamed = Signal(str, str)
     class_delete_requested = Signal(str)
+    class_threshold_requested = Signal(str)
+    class_threshold_reset_requested = Signal(str)
     color_changed = Signal(str, object)
     item_changed = Signal(object)  # 兼容旧 item_changed 信号
     shape_class_reassigned = Signal(object, str)  # (shape, new_class_name) 当点击父类别修改选中图形的类别
@@ -318,6 +320,8 @@ class AnnotationTreeWidget(QWidget):
         self.is_dark = True
         self._hovered_tree_items = []
         self._class_items = {}  # {class_name: QTreeWidgetItem}
+        self._global_confidence_threshold = 0.5
+        self._class_confidence_thresholds = {}
         self._updating = False
 
         # 兼容 main.py 的 listWidget 接口引用
@@ -466,10 +470,25 @@ class AnnotationTreeWidget(QWidget):
             return
 
         menu = QMenu(self.treeWidget)
+        threshold = self._class_confidence_thresholds.get(
+            cls_name, self._global_confidence_threshold
+        )
+        threshold_action = menu.addAction(f"设置独立置信度（当前 {threshold:.0%}）")
+        reset_threshold_action = menu.addAction("恢复统一置信度")
+        reset_threshold_action.setEnabled(cls_name in self._class_confidence_thresholds)
+        menu.addSeparator()
         delete_action = menu.addAction("删除标签")
         action = menu.exec(self.treeWidget.viewport().mapToGlobal(pos))
-        if action == delete_action:
+        if action == threshold_action:
+            self.class_threshold_requested.emit(cls_name)
+        elif action == reset_threshold_action:
+            self.class_threshold_reset_requested.emit(cls_name)
+        elif action == delete_action:
             self.class_delete_requested.emit(cls_name)
+
+    def set_confidence_thresholds(self, global_threshold, class_thresholds):
+        self._global_confidence_threshold = float(global_threshold)
+        self._class_confidence_thresholds = dict(class_thresholds)
 
     def rename_class_in_data(self, old_name, new_name):
         if old_name not in self._class_list:
