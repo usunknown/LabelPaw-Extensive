@@ -1328,6 +1328,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 类别管理组件信号
         self.classListWidget.class_added.connect(self._on_class_added_from_widget)
         self.classListWidget.class_renamed.connect(self._on_class_renamed_from_widget)
+        self.classListWidget.class_delete_requested.connect(self._on_class_delete_requested)
         self.classListWidget.color_changed.connect(self.on_class_color_changed)
         self.classListWidget.item_changed.connect(self.on_list_item_changed)
         self.classListWidget.shape_class_reassigned.connect(self.on_shape_class_reassigned)
@@ -1708,6 +1709,101 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.auto_save_annotation()
                 self.push_state()
             DialogOver(self, f"已将所有的 '{old_name}' 批量变更为 '{new_name}'", "修改成功", "success")
+
+    def _on_class_delete_requested(self, cls_name):
+        if cls_name not in self.class_list:
+            return
+
+        reason = self._get_class_delete_block_reason(cls_name)
+        if reason:
+            DialogOver(
+                self,
+                f"无法删除标签“{cls_name}”。\n{reason}",
+                "标签正在使用",
+                "warning"
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "删除标签",
+            f"确定删除未使用的标签“{cls_name}”吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        self.class_list.remove(cls_name)
+        self.classListWidget.remove_class(cls_name)
+        self.save_classes()
+        self.classListWidget._save_colors()
+        self.helpLabel.setText(f"已删除标签: {cls_name}")
+        self.helpLabel.setStyleSheet("color: green;")
+
+    def _get_class_delete_block_reason(self, cls_name):
+        shape_types = (RectShape, PolyShape, PointShape, RotatedRectShape, PoseShape)
+        if any(
+            isinstance(item, shape_types) and getattr(item, "label", "") == cls_name
+            for item in self.scene.items()
+        ):
+            return "当前图片仍有该标签的标注，请先删除或改为其他标签。"
+
+        if not self.current_dir:
+            return None
+
+        import glob
+        import xml.etree.ElementTree as ET
+
+        for json_file in glob.glob(os.path.join(self.current_dir, "*.json")):
+            if os.path.basename(json_file) == "class_colors.json":
+                continue
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and any(
+                    shape.get("label") == cls_name
+                    for shape in data.get("shapes", [])
+                    if isinstance(shape, dict)
+                ):
+                    return f"标注文件 {os.path.basename(json_file)} 仍在使用该标签。"
+            except (OSError, ValueError, TypeError):
+                continue
+
+        for xml_file in glob.glob(os.path.join(self.current_dir, "*.xml")):
+            try:
+                root = ET.parse(xml_file).getroot()
+                if any(node.text == cls_name for node in root.findall("./object/name")):
+                    return f"标注文件 {os.path.basename(xml_file)} 仍在使用该标签。"
+            except (OSError, ET.ParseError):
+                continue
+
+        class_id = self.class_list.index(cls_name)
+        has_higher_yolo_id = False
+        for txt_file in glob.glob(os.path.join(self.current_dir, "*.txt")):
+            if os.path.basename(txt_file) == "classes.txt":
+                continue
+            try:
+                with open(txt_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        parts = line.split()
+                        if not parts:
+                            continue
+                        try:
+                            label_id = int(parts[0])
+                        except ValueError:
+                            continue
+                        if label_id == class_id:
+                            return f"YOLO 标注文件 {os.path.basename(txt_file)} 仍在使用该标签。"
+                        if label_id > class_id:
+                            has_higher_yolo_id = True
+            except OSError:
+                continue
+
+        if has_higher_yolo_id:
+            return "删除后会改变其他 YOLO 标签的类别编号。请先删除编号更靠后的标签。"
+
+        return None
 
     def on_class_color_changed(self, cls_name, color):
         """类别颜色变更时，同步更新画布上所有该类别的形状颜色"""
