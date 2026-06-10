@@ -4,7 +4,7 @@ import json
 from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QInputDialog, QMessageBox, QLabel, \
     QListWidgetItem, QDialog, QMenu, QAbstractItemView, QProgressBar, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, \
     QCheckBox, QListWidget, QFrame, QWidget
-from PySide6.QtCore import Qt, QPointF, QRectF, QThread, Signal, QSize, QEvent, QSettings, QTimer
+from PySide6.QtCore import Qt, QPointF, QRectF, QThread, Signal, QSize, QEvent, QSettings
 from PySide6.QtGui import QPainter, QIcon, QPixmap, QColor, QAction, QActionGroup, QPolygonF, QMovie
 from main_dataset_tool import DatasetToolWindow
 import cv2
@@ -1049,9 +1049,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.sam_client.text_result_ready.connect(self.handle_text_results)
         self.sam_client.model_status_changed.connect(self.update_model_status)
         # 自动保存定时器（120 秒）
-        self.auto_save_timer = QTimer(self)
-        self.auto_save_timer.timeout.connect(self._on_auto_save_tick)
-        self.auto_save_timer.start(120000)
 
         self.scene.sam_client = self.sam_client
 
@@ -3075,11 +3072,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 # YOLO 或者没有模型时，恢复默认的标注提示词
                 self._update_help_text(self.scene.mode)
-
-    def _on_auto_save_tick(self):
-        """定时自动保存"""
-        if self.current_image_path:
-            self.auto_save_annotation()
 
     def auto_save_annotation(self):
         if not self.current_image_path or not self.scene.img_item: return
